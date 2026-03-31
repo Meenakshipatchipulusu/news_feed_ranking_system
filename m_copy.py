@@ -2,11 +2,12 @@ import streamlit as st
 import requests
 import numpy as np
 import random
+from dotenv import load_dotenv
+import os
 
-# -------------------------------
-# CONFIG
-# -------------------------------
-API_KEY = "2ccb99a8008f49f18faea5aabab70d9e"   # 🔴 Replace with your API key
+load_dotenv()
+
+API_KEY = os.getenv("API_KEY")
 
 categories = [
     "technology",
@@ -84,8 +85,6 @@ def detect_category(title):
         return "world"
     else:
         return random.choice(categories)
-
-
 # -------------------------------
 # FETCH NEWS
 # -------------------------------
@@ -110,8 +109,6 @@ def fetch_news(selected_category):
         article["category"] = detect_category(title)
 
     return articles
-
-
 # -------------------------------
 # UI
 # -------------------------------
@@ -217,4 +214,3 @@ st.write(st.session_state.history)
 
 st.write("---")
 st.subheader("🧾 Manual Category Selection History")
-st.write(st.session_state.manual_history)
