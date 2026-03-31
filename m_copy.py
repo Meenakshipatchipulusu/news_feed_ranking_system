@@ -2,10 +2,10 @@ import streamlit as st
 import requests
 import numpy as np
 import random
-from dotenv import load_dotenv
+from .env import load_.env
 import os
 
-load_dotenv()
+load_.env()
 
 API_KEY = os.getenv("API_KEY")
 
