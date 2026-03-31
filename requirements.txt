@@ -1,15 +1,4 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-streamlit
-requests
-=======
-streamlit
-requests
->>>>>>> 35dfde42415e531b030defa1da93f674e7c40f03
-numpy
-=======
 streamlit
 requests
 numpy
 python-dotenv
->>>>>>> 6bc3676fd60f62e7539b7aaa0668605cb64a7287
