@@ -123,11 +123,13 @@ selected_manual = st.selectbox(
     "Choose category:",
     ["None"] + categories
 )
-
-# avoid duplicate history
-if selected_manual != "None":
-    if len(st.session_state.manual_history) == 0 or st.session_state.manual_history[-1] != selected_manual:
-        st.session_state.manual_history.append(selected_manual)
+# -------------------------------
+# APPLY BUTTON FOR MANUAL SELECTION
+# -------------------------------
+if st.button("✅ Apply Category"):
+    if selected_manual != "None":
+        if len(st.session_state.manual_history) == 0 or st.session_state.manual_history[-1] != selected_manual:
+            st.session_state.manual_history.append(selected_manual)
 
 # -------------------------------
 # REFRESH BUTTON
@@ -213,3 +215,4 @@ st.write(st.session_state.history)
 
 st.write("---")
 st.subheader("🧾 Manual Category Selection History")
+st.write(st.session_state.manual_history)
