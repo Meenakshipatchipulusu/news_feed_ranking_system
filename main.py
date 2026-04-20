@@ -1,22 +1,76 @@
-import streamlit as st
-import requests
-import numpy as np
+import os
 import random
 
-# -------------------------------
-# CONFIG
-# -------------------------------
-API_KEY = "2ccb99a8008f49f18faea5aabab70d9e"   # 🔴 Put your API key here
+import numpy as np
+import requests
+import streamlit as st
+from dotenv import load_dotenv
 
+st.set_page_config(page_title="Smart News Recommendation", page_icon="🗞️", layout="wide")
+
+load_dotenv()
+API_KEY = os.getenv("API_KEY") or st.secrets.get("API_KEY", "")
+
+# -------------------------------
+# 🎨 UI STYLING
+# -------------------------------
+st.markdown("""
+<style>
+.main {background-color: #f8fafc;}
+
+.card {
+    background: linear-gradient(135deg, #ffffff, #f1f5f9);
+    padding: 20px;
+    border-radius: 15px;
+    box-shadow: 0px 6px 18px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
+
+.title {
+    font-size: 20px;
+    font-weight: bold;
+    color: #1e293b;
+}
+
+.category {
+    display:inline-block;
+    padding:6px 12px;
+    border-radius:12px;
+    font-size:13px;
+    margin-bottom:10px;
+}
+
+/* Category Colors */
+.technology {background:#dbeafe;color:#1d4ed8;}
+.sports {background:#dcfce7;color:#15803d;}
+.business {background:#fef3c7;color:#b45309;}
+.politics {background:#fee2e2;color:#b91c1c;}
+.entertainment {background:#f3e8ff;color:#7c3aed;}
+.health {background:#ecfeff;color:#0e7490;}
+.science {background:#e0f2fe;color:#0369a1;}
+.world {background:#f1f5f9;color:#334155;}
+
+.link a {
+    color:#2563eb;
+    text-decoration:none;
+    font-weight:500;
+}
+.link a:hover {text-decoration:underline;}
+
+.stButton>button {
+    border-radius:10px;
+    padding:8px 15px;
+    font-weight:600;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# -------------------------------
+# CATEGORIES
+# -------------------------------
 categories = [
-    "technology",
-    "sports",
-    "business",
-    "politics",
-    "entertainment",
-    "health",
-    "science",
-    "world"
+    "technology", "sports", "business", "politics",
+    "entertainment", "health", "science", "world"
 ]
 n = len(categories)
 
@@ -32,25 +86,35 @@ if "q_values" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# 🔥 NEW: refresh counter
 if "refresh_count" not in st.session_state:
     st.session_state.refresh_count = 0
 
+if "selected_learning" not in st.session_state:
+    st.session_state.selected_learning = None
+
 epsilon = 0.6
+
+# -------------------------------
+# SIDEBAR
+# -------------------------------
+st.sidebar.title("⚙️ Filters")
+
+mode = st.sidebar.radio("Select Mode:", ["Mixed Feed", "Category Filter"])
+selected_sidebar_category = st.sidebar.selectbox("Select Category:", categories)
+
+if st.sidebar.button("🔄 Refresh News"):
+    st.session_state.refresh_count += 1
+    st.rerun()
 
 # -------------------------------
 # RL FUNCTIONS
 # -------------------------------
 def select_category():
-    # if no learning yet → random category
     if np.sum(st.session_state.counts) == 0:
         return random.randint(0, n - 1)
-
     if random.random() < epsilon:
         return random.randint(0, n - 1)
-
     return int(np.argmax(st.session_state.q_values))
-
 
 def update(category_idx, reward):
     st.session_state.counts[category_idx] += 1
@@ -58,160 +122,152 @@ def update(category_idx, reward):
     v = st.session_state.q_values[category_idx]
     st.session_state.q_values[category_idx] += (reward - v) / c
 
-
 # -------------------------------
-# CATEGORY DETECTION
+# CATEGORY DETECTION (for filtering only)
 # -------------------------------
 def detect_category(title):
     title = title.lower()
 
-    if any(word in title for word in ["tech", "ai", "software", "google", "apple"]):
+    if any(w in title for w in ["ai","technology","tech","software","app","startup"]):
         return "technology"
-
-    elif any(word in title for word in ["cricket", "football", "sports", "match"]):
+    elif any(w in title for w in ["cricket","football","match","ipl"]):
         return "sports"
-
-    elif any(word in title for word in ["stock", "market", "business", "economy", "bank"]):
-        return "business"
-
-    elif any(word in title for word in ["election", "government", "minister", "politics"]):
+    elif any(w in title for w in ["election","government","minister"]):
         return "politics"
-
-    elif any(word in title for word in ["movie", "film", "actor", "celebrity", "bollywood"]):
+    elif any(w in title for w in ["movie","film","actor","celebrity"]):
         return "entertainment"
-
-    elif any(word in title for word in ["health", "hospital", "disease", "covid", "medicine"]):
+    elif any(w in title for w in ["health","disease","medicine"]):
         return "health"
-
-    elif any(word in title for word in ["science", "research", "space", "nasa"]):
+    elif any(w in title for w in ["science","space","nasa"]):
         return "science"
-
-    elif any(word in title for word in ["war", "global", "international", "country"]):
+    elif any(w in title for w in ["stock","market","economy","finance"]):
+        return "business"
+    else:
         return "world"
 
+# -------------------------------
+# FETCH NEWS
+# -------------------------------
+def fetch_news(selected_category, is_manual):
+    page = (st.session_state.refresh_count % 5) + 1
+
+    if not is_manual:
+        query = "india OR technology OR sports OR business OR politics OR entertainment"
     else:
-        return random.choice(categories)  # 🔥 important for balance
+        query_map = {
+            "technology": "technology OR AI",
+            "sports": "sports OR cricket",
+            "business": "business OR stock market",
+            "politics": "politics OR government",
+            "entertainment": "movies OR celebrities",
+            "health": "health OR medicine",
+            "science": "science OR space",
+            "world": "world news"
+        }
+        query = query_map.get(selected_category, selected_category)
 
+    url = f"https://newsapi.org/v2/everything?q={query}&pageSize=10&page={page}&language=en&sortBy=publishedAt&apiKey={API_KEY}"
 
-# -------------------------------
-# FETCH NEWS (WITH PAGINATION)
-# -------------------------------
-def fetch_news():
-    page = (st.session_state.refresh_count % 10) + 1
-
-    url = f"https://newsapi.org/v2/everything?q=india&pageSize=10&page={page}&language=en&sortBy=publishedAt&apiKey={API_KEY}"
-    
     res = requests.get(url)
     data = res.json()
 
-    # 🔥 HANDLE LIMIT ERROR SILENTLY
     if data.get("status") != "ok":
-        # reset refresh count
-        st.session_state.refresh_count = 0
-
-        # fetch again from page 1
-        url = f"https://newsapi.org/v2/everything?q=india&pageSize=10&page=1&language=en&sortBy=publishedAt&apiKey={API_KEY}"
-        res = requests.get(url)
-        data = res.json()
+        return []
 
     articles = data.get("articles", [])
 
-    # add category
     for article in articles:
-        title = article.get("title", "")
-        article["category"] = detect_category(title)
+        article["category"] = detect_category(article.get("title", ""))
 
     return articles
 
 # -------------------------------
-# UI
+# HEADER
 # -------------------------------
-st.title("📰 Smart News Recommendation System")
-st.write("👉 Click 👍 on news you like. System will learn your interests!")
+st.markdown("<h1 style='text-align:center;'>📰 Smart News Recommendation</h1>", unsafe_allow_html=True)
 
 # -------------------------------
-# REFRESH BUTTON (FIXED)
+# CATEGORY LOGIC
 # -------------------------------
-if st.button("🔄 Refresh News"):
-    st.session_state.refresh_count += 1
-    st.rerun()
-
-# show refresh count (optional)
-# st.caption(f"Refresh count: {st.session_state.refresh_count}")
-
-# -------------------------------
-# FETCH ARTICLES
-# -------------------------------
-all_articles = fetch_news()
+if mode == "Category Filter":
+    is_manual = True
+    selected_category = selected_sidebar_category
+    st.subheader(f"📌 Category: {selected_category.upper()}")
+else:
+    is_manual = False
+    cat_idx = select_category()
+    selected_category = categories[cat_idx]
+    st.subheader(f"📌 RL-Based Category: {selected_category.upper()}")
 
 # -------------------------------
-# RL CATEGORY SELECTION
+# FETCH DATA
 # -------------------------------
-cat_idx = select_category()
-selected_category = categories[cat_idx]
-
-st.subheader(f"📌 Recommended Category: {selected_category.upper()}")
+all_articles = fetch_news(selected_category, is_manual)
 
 # -------------------------------
-# SMART DISPLAY (PRIORITIZE CATEGORY)
+# DISPLAY LOGIC
 # -------------------------------
-preferred = [a for a in all_articles if a["category"] == selected_category]
-others = [a for a in all_articles if a["category"] != selected_category]
-
-articles = (preferred + others)[:5]
-
-# -------------------------------
-# FALLBACK
-# -------------------------------
-if not articles:
-    st.error("❌ No articles coming from API")
-
-    articles = [
-        {"title": "AI is transforming the world", "url": "#", "category": "technology"},
-        {"title": "India wins cricket match", "url": "#", "category": "sports"},
-        {"title": "Stock market rises today", "url": "#", "category": "business"}
-    ]
+if is_manual:
+    articles = [a for a in all_articles if a["category"] == selected_category][:5]
+else:
+    preferred = [a for a in all_articles if a["category"] == selected_category]
+    others = [a for a in all_articles if a["category"] != selected_category]
+    articles = (preferred + others)[:5]
 
 # -------------------------------
-# DISPLAY ARTICLES
+# ✅ DISPLAY ARTICLES (FINAL FIX)
 # -------------------------------
 for i, article in enumerate(articles):
-    st.write(f"### {article.get('title', 'No Title')}")
 
-    st.write(f"**Category:** {article.get('category', 'unknown')}")
+    cat = article.get("category", "world")
+
+    st.markdown(f"""
+    <div class="card">
+        <div class="category {cat}">{cat.upper()}</div>
+        <div class="title">{article.get('title','No Title')}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     if article.get("url"):
-        st.write(f"[Read full article]({article['url']})")
+        st.markdown(f"<div class='link'>🔗 <a href='{article['url']}' target='_blank'>Read full article</a></div>", unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
-    article_category = article.get("category", "technology")
-    category_idx = categories.index(article_category)
+    # 🔥 FINAL FIX (NO MORE BUG)
+    cat_idx = categories.index(cat)
 
     with col1:
         if st.button("👍 Like", key=f"like_{i}_{st.session_state.refresh_count}"):
-            update(category_idx, 1)
-            st.session_state.history.append(article_category)
-            st.success("Preference updated!")
+            update(cat_idx, 1)
+            st.session_state.history.append(cat)
+            st.success(f"Liked: {cat}")
 
     with col2:
         if st.button("👎 Skip", key=f"skip_{i}_{st.session_state.refresh_count}"):
-            update(category_idx, 0)
+            update(cat_idx, 0)
+
+    st.markdown("---")
+
 # -------------------------------
-# LEARNING STATUS
+# 📊 LEARNING
 # -------------------------------
-st.write("---")
-st.subheader("📊 Learning Status")
+st.subheader("📊 Learning")
+
+cols = st.columns(4)
 
 for i in range(n):
-    st.write(
-        f"{categories[i]} -> score: {st.session_state.q_values[i]:.2f}, "
-        f"chosen: {int(st.session_state.counts[i])} times"
-    )
+    with cols[i % 4]:
+        if st.button(categories[i].upper(), key=f"learn_{i}"):
+            st.session_state.selected_learning = i
+
+if st.session_state.selected_learning is not None:
+    idx = st.session_state.selected_learning
+    st.success(f"Category: {categories[idx].upper()}")
+    st.info(f"Score: {st.session_state.q_values[idx]:.2f}")
+    st.info(f"Chosen: {int(st.session_state.counts[idx])} times")
 
 # -------------------------------
-# USER HISTORY
+# HISTORY
 # -------------------------------
-st.write("---")
-st.subheader("🧠 Your Interest History")
+st.subheader("🧠 Interaction History")
 st.write(st.session_state.history)

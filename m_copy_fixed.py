@@ -2,19 +2,21 @@ import streamlit as st
 import requests
 import numpy as np
 import random
-import os
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
-
 API_KEY = os.getenv("API_KEY")
 
-# -------------------------------
-# CATEGORIES
-# -------------------------------
 categories = [
-    "technology", "sports", "business", "politics",
-    "entertainment", "health", "science", "world"
+    "technology",
+    "sports",
+    "business",
+    "politics",
+    "entertainment",
+    "health",
+    "science",
+    "world"
 ]
 n = len(categories)
 
@@ -36,8 +38,14 @@ if "manual_history" not in st.session_state:
 if "refresh_count" not in st.session_state:
     st.session_state.refresh_count = 0
 
-if "selected_manual" not in st.session_state:
-    st.session_state.selected_manual = "None"
+if "last_manual" not in st.session_state:
+    st.session_state.last_manual = None
+
+if "active_category" not in st.session_state:
+    st.session_state.active_category = None
+
+if "manual_select" not in st.session_state:
+    st.session_state.manual_select = "None"
 
 epsilon = 0.6
 
@@ -60,53 +68,41 @@ def update(category_idx, reward):
     v = st.session_state.q_values[category_idx]
     st.session_state.q_values[category_idx] += (reward - v) / c
 
+
 # -------------------------------
 # CATEGORY DETECTION
 # -------------------------------
 def detect_category(title):
     title = title.lower()
 
-    if any(w in title for w in ["tech", "ai", "software"]):
+    if any(word in title for word in ["tech", "ai", "software", "google", "apple"]):
         return "technology"
-    elif any(w in title for w in ["cricket", "football", "match"]):
+    elif any(word in title for word in ["cricket", "football", "sports", "match"]):
         return "sports"
-    elif any(w in title for w in ["stock", "market", "business"]):
+    elif any(word in title for word in ["stock", "market", "business", "economy", "bank"]):
         return "business"
-    elif any(w in title for w in ["election", "government"]):
+    elif any(word in title for word in ["election", "government", "minister", "politics"]):
         return "politics"
-    elif any(w in title for w in ["movie", "actor"]):
+    elif any(word in title for word in ["movie", "film", "actor", "celebrity", "bollywood"]):
         return "entertainment"
-    elif any(w in title for w in ["health", "disease"]):
+    elif any(word in title for word in ["health", "hospital", "disease", "covid", "medicine"]):
         return "health"
-    elif any(w in title for w in ["science", "space"]):
+    elif any(word in title for word in ["science", "research", "space", "nasa"]):
         return "science"
-    else:
+    elif any(word in title for word in ["war", "global", "international", "country"]):
         return "world"
-
-# -------------------------------
-# FETCH NEWS
-# -------------------------------
-def fetch_news(selected_category, is_manual):
-    page = (st.session_state.refresh_count % 5) + 1
-
-    # 🟢 MIXED FEED (DEFAULT)
-    if not is_manual:
-        query = "india OR technology OR sports OR business OR politics OR entertainment"
     else:
-        query_map = {
-            "technology": "technology OR AI",
-            "sports": "sports OR cricket",
-            "business": "business OR stock market",
-            "politics": "politics OR government",
-            "entertainment": "movies OR celebrities",
-            "health": "health OR medicine",
-            "science": "science OR space",
-            "world": "world news"
-        }
-        query = query_map.get(selected_category, selected_category)
+        return random.choice(categories)
 
-    url = f"https://newsapi.org/v2/everything?q={query}&pageSize=10&page={page}&language=en&sortBy=publishedAt&apiKey={API_KEY}"
 
+# -------------------------------
+# FETCH NEWS (SINGLE CATEGORY)
+# -------------------------------
+def fetch_news(category):
+    page = (st.session_state.refresh_count % 10) + 1
+
+    url = f"https://newsapi.org/v2/everything?q={category}&pageSize=10&page={page}&language=en&sortBy=publishedAt&apiKey={API_KEY}"
+    
     res = requests.get(url)
     data = res.json()
 
@@ -121,6 +117,23 @@ def fetch_news(selected_category, is_manual):
 
     return articles
 
+
+# -------------------------------
+# FETCH MIXED NEWS 🔥
+# -------------------------------
+def fetch_mixed_news():
+    all_articles = []
+
+    random_categories = random.sample(categories, 3)
+
+    for cat in random_categories:
+        articles = fetch_news(cat)
+        all_articles.extend(articles[:3])
+
+    random.shuffle(all_articles)
+    return all_articles
+
+
 # -------------------------------
 # UI
 # -------------------------------
@@ -132,59 +145,51 @@ st.write("👉 Click 👍 on news you like. System will learn your interests!")
 # -------------------------------
 st.write("### 🎯 Select Category (Optional)")
 
-st.selectbox(
+selected_manual = st.selectbox(
     "Choose category:",
     ["None"] + categories,
-    key="selected_manual"
+    key="manual_select"
 )
 
-if st.button("✅ Apply Category"):
-    if st.session_state.selected_manual != "None":
-        if len(st.session_state.manual_history) == 0 or \
-           st.session_state.manual_history[-1] != st.session_state.selected_manual:
-            st.session_state.manual_history.append(st.session_state.selected_manual)
+if selected_manual != "None":
+    st.session_state.active_category = selected_manual
+
+    if selected_manual != st.session_state.last_manual:
+        st.session_state.manual_history.append(selected_manual)
+        st.session_state.last_manual = selected_manual
 
 # -------------------------------
-# REFRESH
+# REFRESH BUTTON
 # -------------------------------
 if st.button("🔄 Refresh News"):
     st.session_state.refresh_count += 1
+    st.session_state.active_category = None
+    st.session_state.manual_select = "None"
     st.rerun()
 
 # -------------------------------
 # CATEGORY LOGIC
 # -------------------------------
-is_manual = st.session_state.selected_manual != "None"
+if st.session_state.active_category:
+    selected_category = st.session_state.active_category
+    st.subheader(f"📌 Category Mode: {selected_category.upper()}")
 
-if is_manual:
-    selected_category = st.session_state.selected_manual
-    st.subheader(f"📌 Category (Manual): {selected_category.upper()}")
-else:
-    cat_idx = select_category()
-    selected_category = categories[cat_idx]
-    st.subheader(f"📌 Category (RL-Based): {selected_category.upper()}")
-
-# -------------------------------
-# FETCH ARTICLES
-# -------------------------------
-all_articles = fetch_news(selected_category, is_manual)
-
-# -------------------------------
-# DISPLAY LOGIC
-# -------------------------------
-if is_manual:
-    # 🔵 Only selected category
+    all_articles = fetch_news(selected_category)
     articles = [a for a in all_articles if a["category"] == selected_category][:5]
+
 else:
-    # 🟢 Mixed + RL priority
-    preferred = [a for a in all_articles if a["category"] == selected_category]
-    others = [a for a in all_articles if a["category"] != selected_category]
-    articles = (preferred + others)[:5]
+    st.subheader("📌 Recommended Feed (Mixed)")
+
+    articles = fetch_mixed_news()[:5]
 
 # fallback
-if not all_articles:
-    st.warning("⚠ No news from API")
-    articles = []
+if not articles:
+    st.warning("⚠ Showing sample news")
+    articles = [
+        {"title": "AI is transforming the world", "url": "#", "category": "technology"},
+        {"title": "India wins cricket match", "url": "#", "category": "sports"},
+        {"title": "Stock market rises today", "url": "#", "category": "business"}
+    ]
 
 # -------------------------------
 # DISPLAY ARTICLES
@@ -205,7 +210,7 @@ for i, article in enumerate(articles):
         if st.button("👍 Like", key=f"like_{i}_{st.session_state.refresh_count}"):
             update(category_idx, 1)
             st.session_state.history.append(article_category)
-            st.success(f"Learning: {article_category} ↑")
+            st.success("Preference updated!")
 
     with col2:
         if st.button("👎 Skip", key=f"skip_{i}_{st.session_state.refresh_count}"):
@@ -218,7 +223,10 @@ st.write("---")
 st.subheader("📊 Learning Status")
 
 for i in range(n):
-    st.write(f"{categories[i]} → score: {st.session_state.q_values[i]:.2f}")
+    st.write(
+        f"{categories[i]} -> score: {st.session_state.q_values[i]:.2f}, "
+        f"chosen: {int(st.session_state.counts[i])} times"
+    )
 
 # -------------------------------
 # HISTORY
@@ -228,5 +236,5 @@ st.subheader("🧠 RL Interaction History")
 st.write(st.session_state.history)
 
 st.write("---")
-st.subheader("🧾 Manual Category History")
+st.subheader("🧾 Manual Category Selection History")
 st.write(st.session_state.manual_history)
